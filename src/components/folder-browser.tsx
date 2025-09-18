@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { FolderOpen, File, Copy, Loader2 } from 'lucide-react'
+import { FolderOpen, Folder, File, Copy, Loader2, ChevronRight, ChevronDown } from 'lucide-react'
 
 interface FileItem {
   handle: FileSystemFileHandle | FileSystemDirectoryHandle
@@ -25,6 +25,7 @@ export default function FolderBrowser() {
   const [outputContent, setOutputContent] = useState<string>('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [rootPath, setRootPath] = useState<string>('')
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   const isFileSystemAccessSupported = 'showDirectoryPicker' in window
 
@@ -37,6 +38,7 @@ export default function FolderBrowser() {
     try {
       const directoryHandle = await window.showDirectoryPicker()
       setRootPath(directoryHandle.name)
+      setExpandedFolders(new Set([directoryHandle.name])) // Auto-expand root folder
       await scanDirectory(directoryHandle, directoryHandle.name)
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
@@ -80,15 +82,58 @@ export default function FolderBrowser() {
     }
   }
 
+  const toggleFolderExpansion = useCallback((folderPath: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(folderPath)) {
+        newSet.delete(folderPath)
+      } else {
+        newSet.add(folderPath)
+      }
+      return newSet
+    })
+  }, [])
+
   const toggleItemSelection = useCallback((item: FileItem) => {
     const isCurrentlySelected = selectedItems.some(selected => selected.path === item.path)
     
     if (isCurrentlySelected) {
-      setSelectedItems(prev => prev.filter(selected => selected.path !== item.path))
+      // If deselecting a folder, also deselect all its children
+      if (item.type === 'directory') {
+        setSelectedItems(prev => prev.filter(selected => 
+          selected.path !== item.path && !selected.path.startsWith(item.path + '/')
+        ))
+      } else {
+        setSelectedItems(prev => prev.filter(selected => selected.path !== item.path))
+      }
     } else {
-      setSelectedItems(prev => [...prev, { ...item, selected: true }])
+      // If selecting a folder, also select all its children
+      if (item.type === 'directory') {
+        const childItems = getAllChildItems(item.path)
+        setSelectedItems(prev => [...prev.filter(selected => 
+          selected.path !== item.path && !selected.path.startsWith(item.path + '/')
+        ), { ...item, selected: true }, ...childItems])
+      } else {
+        setSelectedItems(prev => [...prev, { ...item, selected: true }])
+      }
     }
   }, [selectedItems])
+
+  const getAllChildItems = useCallback((folderPath: string): FileItem[] => {
+    const childItems: FileItem[] = []
+    
+    Object.entries(directoryStructure).forEach(([dirPath, items]) => {
+      if (dirPath.startsWith(folderPath + '/') || dirPath === folderPath) {
+        items.forEach(item => {
+          if (item.path.startsWith(folderPath + '/')) {
+            childItems.push({ ...item, selected: true })
+          }
+        })
+      }
+    })
+    
+    return childItems
+  }, [directoryStructure])
 
   const processSelectedFiles = useCallback(async () => {
     if (selectedItems.length === 0) {
@@ -179,40 +224,81 @@ export default function FolderBrowser() {
     setOutputContent('')
   }, [])
 
-  const renderDirectoryTree = (path: string, items: FileItem[], depth = 0) => {
+  const clearAll = useCallback(() => {
+    setSelectedItems([])
+    setOutputContent('')
+    setDirectoryStructure({})
+    setExpandedFolders(new Set())
+    setRootPath('')
+  }, [])
+
+  const getChildrenForPath = (parentPath: string): FileItem[] => {
+    // Find the directory structure entry for this path
+    const directChildren = directoryStructure[parentPath] || []
+    return directChildren
+  }
+
+  const renderFileItem = (item: FileItem, depth: number = 0) => {
+    const isSelected = selectedItems.some(selected => selected.path === item.path)
+    const isExpanded = expandedFolders.has(item.path)
+    const children = item.type === 'directory' ? getChildrenForPath(item.path) : []
+    const hasChildren = children.length > 0
+
     return (
-      <div key={path} className={`${depth > 0 ? `ml-${depth * 4}` : ''}`}>
-        {depth > 0 && (
-          <div className="font-medium text-blue-600 mb-2">
-            <FolderOpen className="inline w-4 h-4 mr-1" />
-            {path.split('/').pop()}/
+      <div key={item.path}>
+        <div className={`flex items-center space-x-1 py-1 hover:bg-muted/50 rounded px-1`} style={{ marginLeft: `${depth * 20}px` }}>
+          {item.type === 'directory' ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-4 h-4 p-0 hover:bg-muted/80 cursor-pointer transition-colors"
+              onClick={() => toggleFolderExpansion(item.path)}
+            >
+              {hasChildren ? (
+                isExpanded ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" />
+                )
+              ) : (
+                <div className="w-3 h-3" />
+              )}
+            </Button>
+          ) : (
+            <div className="w-4 h-4" />
+          )}
+          
+          <Checkbox
+            id={item.path}
+            checked={isSelected}
+            onCheckedChange={() => toggleItemSelection(item)}
+            className="cursor-pointer"
+          />
+          
+          <Label 
+            htmlFor={item.path}
+            className="flex items-center space-x-2 cursor-pointer font-mono text-sm flex-1 hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
+          >
+            {item.type === 'directory' ? (
+              isExpanded ? (
+                <FolderOpen className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              ) : (
+                <Folder className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              )
+            ) : (
+              <File className="w-4 h-4 text-gray-600 flex-shrink-0" />
+            )}
+            <span className={`${item.type === 'directory' ? 'text-blue-600 font-medium' : 'text-gray-700'} truncate`}>
+              {item.name}
+            </span>
+          </Label>
+        </div>
+        
+        {item.type === 'directory' && isExpanded && hasChildren && (
+          <div>
+            {children.map(childItem => renderFileItem(childItem, depth + 1))}
           </div>
         )}
-        {items.map((item) => (
-          <div key={item.path} className="flex items-center space-x-2 py-1">
-            <Checkbox
-              id={item.path}
-              checked={selectedItems.some(selected => selected.path === item.path)}
-              onCheckedChange={() => toggleItemSelection(item)}
-            />
-            <Label 
-              htmlFor={item.path}
-              className="flex items-center space-x-1 cursor-pointer font-mono text-sm"
-            >
-              {item.type === 'directory' ? (
-                <FolderOpen className="w-4 h-4 text-blue-600" />
-              ) : (
-                <File className="w-4 h-4 text-gray-600" />
-              )}
-              <span className={item.type === 'directory' ? 'text-blue-600 font-medium' : 'text-gray-700'}>
-                {item.name}
-              </span>
-            </Label>
-          </div>
-        ))}
-        {Object.entries(directoryStructure)
-          .filter(([dirPath]) => dirPath.startsWith(path + '/') && dirPath.split('/').length === path.split('/').length + 1)
-          .map(([dirPath, dirItems]) => renderDirectoryTree(dirPath, dirItems, depth + 1))}
       </div>
     )
   }
@@ -240,7 +326,7 @@ export default function FolderBrowser() {
   return (
     <div className="p-6 min-h-screen">
       <div className="flex flex-wrap gap-4 mb-6">
-        <Button onClick={selectFolder} className="flex items-center gap-2">
+        <Button onClick={selectFolder} className="flex items-center gap-2 cursor-pointer">
           <FolderOpen className="w-4 h-4" />
           Select Folder
         </Button>
@@ -250,7 +336,7 @@ export default function FolderBrowser() {
               onClick={processSelectedFiles} 
               disabled={selectedItems.length === 0 || isProcessing}
               variant="secondary"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
               {isProcessing ? (
                 <>
@@ -261,8 +347,11 @@ export default function FolderBrowser() {
                 `Process Selected (${selectedItems.length})`
               )}
             </Button>
-            <Button onClick={clearSelection} variant="outline">
+            <Button onClick={clearSelection} variant="outline" className="cursor-pointer">
               Clear Selection
+            </Button>
+            <Button onClick={clearAll} variant="destructive" className="cursor-pointer">
+              Clear All
             </Button>
           </>
         )}
@@ -270,7 +359,7 @@ export default function FolderBrowser() {
 
       {rootPath && (
         <Card className="mb-6">
-          <CardContent className="pt-4">
+          <CardContent>
             <p className="text-sm">
               <strong>Current folder:</strong> {rootPath}
             </p>
@@ -281,36 +370,36 @@ export default function FolderBrowser() {
       <div className="flex gap-6 min-h-0 flex-1">
         <div className="flex-1">
           {Object.keys(directoryStructure).length > 0 && (
-            <Card className="h-full">
-              <CardHeader>
+            <Card className="h-full flex flex-col">
+              <CardHeader className="flex-shrink-0">
                 <CardTitle>Select files and folders:</CardTitle>
               </CardHeader>
-              <CardContent className="overflow-y-auto max-h-96">
-                {Object.entries(directoryStructure)
-                  .filter(([path]) => !path.includes('/'))
-                  .map(([path, items]) => renderDirectoryTree(path, items))}
+              <CardContent className="flex-1 overflow-y-auto space-y-1 min-h-0">
+                {rootPath && directoryStructure[rootPath] && 
+                  directoryStructure[rootPath].map(item => renderFileItem(item, 0))
+                }
               </CardContent>
             </Card>
           )}
         </div>
 
         <div className="flex-1">
-          <Card className="h-full">
-            <CardHeader className="flex-row items-center justify-between space-y-0">
+          <Card className="h-full flex flex-col">
+            <CardHeader className="flex-row items-center justify-between space-y-0 flex-shrink-0">
               <CardTitle>File Contents:</CardTitle>
               {outputContent && (
-                <Button onClick={copyToClipboard} size="sm" className="flex items-center gap-2">
+                <Button onClick={copyToClipboard} size="sm" className="flex items-center gap-2 cursor-pointer">
                   <Copy className="w-4 h-4" />
                   Copy to Clipboard
                 </Button>
               )}
             </CardHeader>
-            <CardContent className="h-full pb-4">
+            <CardContent className="flex-1 pb-4 min-h-0">
               <Textarea
                 value={outputContent}
                 readOnly
                 placeholder="Processed file contents will appear here..."
-                className="min-h-96 font-mono text-sm resize-none"
+                className="h-full font-mono text-sm resize-none"
               />
             </CardContent>
           </Card>
