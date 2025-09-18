@@ -6,14 +6,19 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 800,
+    minHeight: 600,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
       webSecurity: true
     },
-    icon: path.join(__dirname, '../public/vite.svg'),
-    show: false
+    icon: path.join(__dirname, '../public/icon.png'),
+    show: false,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    backgroundColor: '#ffffff',
+    title: 'Copier'
   })
 
   // Load the app
@@ -28,6 +33,16 @@ function createWindow() {
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
+    
+    // Focus the window on first launch
+    if (isDev) {
+      mainWindow.focus()
+    }
+  })
+
+  // Set window title after load
+  mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow.setTitle('Copier')
   })
 
   // Handle external links
@@ -37,7 +52,14 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  // Set app user model ID for Windows
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.filecopier.llm')
+  }
+  
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

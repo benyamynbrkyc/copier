@@ -2,6 +2,8 @@
   "name": "copier",
   "private": true,
   "version": "0.0.0",
+  "description": "A tool to copy file contents for AI chat conversations",
+  "author": "Benjamin Brkic",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -49,22 +51,40 @@
   },
   "build": {
     "appId": "com.copier.app",
-    "productName": "File Copier",
+    "productName": "Copier",
+    "copyright": "Copyright © 2025",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "public/icon.*"
     ],
     "mac": {
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "public/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ]
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "public/icon.ico"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "public/icon.png",
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }
