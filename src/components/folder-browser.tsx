@@ -1,5 +1,10 @@
 import { useState, useCallback } from 'react'
-import './folder-browser.css'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { FolderOpen, File, Copy, Loader2 } from 'lucide-react'
 
 interface FileItem {
   handle: FileSystemFileHandle | FileSystemDirectoryHandle
@@ -176,24 +181,33 @@ export default function FolderBrowser() {
 
   const renderDirectoryTree = (path: string, items: FileItem[], depth = 0) => {
     return (
-      <div key={path} className={`directory-level depth-${depth}`}>
+      <div key={path} className={`${depth > 0 ? `ml-${depth * 4}` : ''}`}>
         {depth > 0 && (
-          <div className="directory-header">
-            <span className="directory-name">{path.split('/').pop()}/</span>
+          <div className="font-medium text-blue-600 mb-2">
+            <FolderOpen className="inline w-4 h-4 mr-1" />
+            {path.split('/').pop()}/
           </div>
         )}
         {items.map((item) => (
-          <div key={item.path} className="file-item">
-            <label className="file-label">
-              <input
-                type="checkbox"
-                checked={selectedItems.some(selected => selected.path === item.path)}
-                onChange={() => toggleItemSelection(item)}
-              />
-              <span className={`file-name ${item.type}`}>
-                {item.type === 'directory' ? '📁' : '📄'} {item.name}
+          <div key={item.path} className="flex items-center space-x-2 py-1">
+            <Checkbox
+              id={item.path}
+              checked={selectedItems.some(selected => selected.path === item.path)}
+              onCheckedChange={() => toggleItemSelection(item)}
+            />
+            <Label 
+              htmlFor={item.path}
+              className="flex items-center space-x-1 cursor-pointer font-mono text-sm"
+            >
+              {item.type === 'directory' ? (
+                <FolderOpen className="w-4 h-4 text-blue-600" />
+              ) : (
+                <File className="w-4 h-4 text-gray-600" />
+              )}
+              <span className={item.type === 'directory' ? 'text-blue-600 font-medium' : 'text-gray-700'}>
+                {item.name}
               </span>
-            </label>
+            </Label>
           </div>
         ))}
         {Object.entries(directoryStructure)
@@ -205,73 +219,101 @@ export default function FolderBrowser() {
 
   if (!isFileSystemAccessSupported) {
     return (
-      <div className="folder-browser error">
-        <h2>Browser Not Supported</h2>
-        <p>This app requires the File System Access API, which is only available in modern Chromium-based browsers (Chrome, Edge, etc.).</p>
-        <p>Please use a supported browser to access local files.</p>
+      <div className="p-8">
+        <Card className="max-w-2xl mx-auto border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-700">Browser Not Supported</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-600 mb-2">
+              This app requires the File System Access API, which is only available in modern Chromium-based browsers (Chrome, Edge, etc.).
+            </p>
+            <p className="text-red-600">
+              Please use a supported browser to access local files.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="folder-browser">
-      <div className="controls">
-        <button onClick={selectFolder} className="primary-button">
+    <div className="p-6 min-h-screen">
+      <div className="flex flex-wrap gap-4 mb-6">
+        <Button onClick={selectFolder} className="flex items-center gap-2">
+          <FolderOpen className="w-4 h-4" />
           Select Folder
-        </button>
+        </Button>
         {Object.keys(directoryStructure).length > 0 && (
           <>
-            <button 
+            <Button 
               onClick={processSelectedFiles} 
               disabled={selectedItems.length === 0 || isProcessing}
-              className="secondary-button"
+              variant="secondary"
+              className="flex items-center gap-2"
             >
-              {isProcessing ? 'Processing...' : `Process Selected (${selectedItems.length})`}
-            </button>
-            <button onClick={clearSelection} className="tertiary-button">
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                `Process Selected (${selectedItems.length})`
+              )}
+            </Button>
+            <Button onClick={clearSelection} variant="outline">
               Clear Selection
-            </button>
+            </Button>
           </>
         )}
       </div>
 
       {rootPath && (
-        <div className="current-folder">
-          <strong>Current folder:</strong> {rootPath}
-        </div>
+        <Card className="mb-6">
+          <CardContent className="pt-4">
+            <p className="text-sm">
+              <strong>Current folder:</strong> {rootPath}
+            </p>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="browser-content">
-        <div className="left-panel">
+      <div className="flex gap-6 min-h-0 flex-1">
+        <div className="flex-1">
           {Object.keys(directoryStructure).length > 0 && (
-            <div className="file-tree">
-              <h3>Select files and folders:</h3>
-              <div className="tree-container">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>Select files and folders:</CardTitle>
+              </CardHeader>
+              <CardContent className="overflow-y-auto max-h-96">
                 {Object.entries(directoryStructure)
                   .filter(([path]) => !path.includes('/'))
                   .map(([path, items]) => renderDirectoryTree(path, items))}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
         </div>
 
-        <div className="right-panel">
-          <div className="output-section">
-            <div className="output-header">
-              <h3>File Contents:</h3>
+        <div className="flex-1">
+          <Card className="h-full">
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle>File Contents:</CardTitle>
               {outputContent && (
-                <button onClick={copyToClipboard} className="copy-button">
+                <Button onClick={copyToClipboard} size="sm" className="flex items-center gap-2">
+                  <Copy className="w-4 h-4" />
                   Copy to Clipboard
-                </button>
+                </Button>
               )}
-            </div>
-            <textarea
-              className="output-textarea"
-              value={outputContent}
-              readOnly
-              placeholder="Processed file contents will appear here..."
-            />
-          </div>
+            </CardHeader>
+            <CardContent className="h-full pb-4">
+              <Textarea
+                value={outputContent}
+                readOnly
+                placeholder="Processed file contents will appear here..."
+                className="min-h-96 font-mono text-sm resize-none"
+              />
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
